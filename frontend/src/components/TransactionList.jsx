@@ -4,7 +4,7 @@ const TransactionList = ({ transactions, onDeleteTransaction }) => {
   return (
     <div className="card border-0 shadow-sm">
       <div className="card-header bg-white py-3 border-bottom">
-        <h5 className="mb-0 fw-semibold">📋 Transaction History</h5>
+        <h5 className="mb-0 fw-semibold">Transaction History</h5>
       </div>
       <div className="card-body p-0">
         {transactions.length === 0 ? (

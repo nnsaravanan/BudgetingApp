@@ -7,7 +7,7 @@ const IncomeCard = ({ biweeklyIncome, onIncomeChange, monthlyIncome }) => {
       style={{background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)'}}
     >
       <div className="card-body p-4">
-        <label className="form-label fw-bold text-dark mb-3">💵 Biweekly Income</label>
+        <label className="form-label fw-bold text-dark mb-3">Biweekly Income</label>
         <div className="input-group input-group-lg">
           <span className="input-group-text bg-white border-2">$</span>
           <input
