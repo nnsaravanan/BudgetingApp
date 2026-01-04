@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './hooks/useAuth';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
-import SignUpPage from './pages/SignUpPage';
+import SignUpPage from './pages/SignUpPage'
 import BudgetPage from './pages/BudgetPage';
 
 function App() {
