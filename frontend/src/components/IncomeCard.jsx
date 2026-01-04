@@ -1,10 +1,10 @@
 import React from 'react';
 
-const IncomeCard = ({ biweeklyIncome, onIncomeChange, monthlyIncome }) => {
+const IncomeCard = ({ biweeklyIncome, onIncomeChange, monthlyIncome, onSaveIncome }) => {
   return (
-    <div 
-      className="card border-0 shadow-sm mb-4" 
-      style={{background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)'}}
+    <div
+      className="card border-0 shadow-sm mb-4"
+      style={{ background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)' }}
     >
       <div className="card-body p-4">
         <label className="form-label fw-bold text-dark mb-3">Biweekly Income</label>
@@ -18,7 +18,15 @@ const IncomeCard = ({ biweeklyIncome, onIncomeChange, monthlyIncome }) => {
             placeholder="0.00"
             step="0.01"
           />
+          <button
+            onClick={onSaveIncome}
+            className="btn text-white fw-semibold"
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
+            Save Income
+          </button>
         </div>
+
         <div className="mt-3 p-3 bg-white rounded">
           <small className="text-muted">Monthly Income:</small>
           <h5 className="mb-0 fw-bold text-dark">${monthlyIncome.toFixed(2)}</h5>

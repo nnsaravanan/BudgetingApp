@@ -10,17 +10,24 @@ import Header from '../components/Header';
 const BudgetPage = () => {
   const { user, signOut } = useAuth();
   const {
-    biweeklyIncome,
+    biweeklyIncome: savedBiweeklyIncome,
     transactions,
     loading,
     error,
-    monthlyIncome,
-    totalSpent,
-    remaining,
     updateIncome,
     addTransaction,
     deleteTransaction
   } = useBudget(user);
+
+  // Local state for income (changes immediately in UI)
+  const [localBiweeklyIncome, setLocalBiweeklyIncome] = useState('');
+  
+  // Sync local state with saved income when it loads
+  useState(() => {
+    if (savedBiweeklyIncome) {
+      setLocalBiweeklyIncome(savedBiweeklyIncome);
+    }
+  }, [savedBiweeklyIncome]);
 
   const [newTransaction, setNewTransaction] = useState({
     amount: '',
@@ -31,10 +38,29 @@ const BudgetPage = () => {
 
   const categories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Healthcare', 'Other'];
 
-  const handleIncomeChange = async (e) => {
+  // Calculate monthly income from LOCAL state (for instant UI update)
+  const monthlyIncome = localBiweeklyIncome ? (parseFloat(localBiweeklyIncome) * 26) / 12 : 0;
+  const totalSpent = transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+  const remaining = monthlyIncome - totalSpent;
+
+  // Handle input change - updates LOCAL state only (UI updates instantly)
+  const handleIncomeChange = (e) => {
     const value = e.target.value;
-    if (value) {
-      await updateIncome(value);
+    setLocalBiweeklyIncome(value);
+  };
+
+  // Handle save button click - saves to database
+  const handleSaveIncome = async () => {
+    if (!localBiweeklyIncome) {
+      alert('Please enter an income amount');
+      return;
+    }
+
+    try {
+      await updateIncome(localBiweeklyIncome);
+      alert('Income saved successfully!');
+    } catch (err) {
+      alert('Failed to save income. Please try again.');
     }
   };
 
@@ -107,8 +133,9 @@ const BudgetPage = () => {
 
           <div className="card-body p-5">
             <IncomeCard
-              biweeklyIncome={biweeklyIncome}
+              biweeklyIncome={localBiweeklyIncome}
               onIncomeChange={handleIncomeChange}
+              onSaveIncome={handleSaveIncome}
               monthlyIncome={monthlyIncome}
             />
 
