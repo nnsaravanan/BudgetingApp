@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useBudget } from '../hooks/useBudget';
 import IncomeCard from '../components/IncomeCard';
@@ -23,7 +23,7 @@ const BudgetPage = () => {
   const [localBiweeklyIncome, setLocalBiweeklyIncome] = useState('');
   
   // Sync local state with saved income when it loads
-  useState(() => {
+  useEffect(() => {
     if (savedBiweeklyIncome) {
       setLocalBiweeklyIncome(savedBiweeklyIncome);
     }
