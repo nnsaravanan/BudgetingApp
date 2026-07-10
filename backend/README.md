@@ -1,1 +1,0 @@
-Switch .env to prod when on prod branch
