@@ -1,6 +1,5 @@
 flowchart TB
     User([User / Browser])
-    Bank[/Bank alert emails/]
     IaC["CloudFormation / AWS SAM<br/>YAML — provisions everything"]
 
     subgraph AWS["AWS Cloud"]
@@ -14,11 +13,6 @@ flowchart TB
         subgraph APIL["API Layer"]
             APIGW[API Gateway<br/>+ Cognito authorizer]
             AppLambda[App Lambda — Node.js<br/>CRUD + reports]
-        end
-
-        subgraph Ingest["Email Ingestion — event-driven"]
-            SES[SES Inbound<br/>verify SPF/DKIM]
-            IngestLambda[Ingest Lambda<br/>parse + dedup]
         end
 
         subgraph Data["VPC — private subnets"]
@@ -38,13 +32,8 @@ flowchart TB
     APIGW -->|3. invoke w/ user claims| AppLambda
     AppLambda -->|4. SQL scoped to userId| DB
 
-    Bank -.forward.-> SES
-    SES -->|on receive| IngestLambda
-    IngestLambda -->|write if new| DB
 
     AppLambda -.creds.-> Secrets
-    IngestLambda -.creds.-> Secrets
     AppLambda -.logs.-> CW
-    IngestLambda -.logs.-> CW
     AppLambda -.reach AWS APIs.-> VPCe
     IaC -.provisions all.-> AWS

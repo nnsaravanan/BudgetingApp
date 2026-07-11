@@ -1,0 +1,279 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-09
+Description: >
+  Budgeting App - Item 1: data/network foundation.
+  Private VPC, Aurora Serverless v2 (min 0 ACU / auto-pause), Secrets Manager
+  for DB creds, and free-tier-friendly VPC endpoints (no NAT gateway).
+  App Lambda, API Gateway, and Cognito are added in later build-order items.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  DBName:
+    Type: String
+    Default: budgeting
+    Description: Initial database name created in the Aurora cluster.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]*"
+
+  DBMasterUsername:
+    Type: String
+    Default: budgetadmin
+    Description: Master username for the Aurora cluster.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]*"
+
+  EngineVersion:
+    Type: String
+    Default: "16.4"
+    Description: >
+      Aurora PostgreSQL engine version. Must be a version that supports a
+      minimum capacity of 0 ACU (auto-pause): 13.15+, 14.12+, 15.7+, 16.3+.
+
+  MaxCapacity:
+    Type: Number
+    Default: 2
+    Description: Maximum Aurora Serverless v2 capacity in ACUs (cost ceiling).
+    MinValue: 1
+    MaxValue: 16
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # ----- Networking -------------------------------------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true       # required for private DNS on interface endpoints
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  # Two private subnets in two AZs. Aurora requires >= 2 AZs in its subnet
+  # group. There is deliberately NO internet gateway and NO NAT gateway:
+  # everything the Lambdas need is reached via VPC endpoints (see below).
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-b"
+
+  # Single route table for the private subnets. The S3 gateway endpoint below
+  # attaches its routes here. With no IGW/NAT this table has no 0.0.0.0/0 route.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-rt"
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ----- Security groups --------------------------------------------------
+  # Lambda SG: the App/Ingest functions live here (attached in later items).
+  # Egress is open so they can reach the interface endpoints on 443; nothing
+  # can route to the internet anyway because there is no NAT/IGW.
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for App/Ingest Lambdas (in-VPC).
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow outbound to VPC endpoints and Aurora.
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-lambda-sg"
+
+  # Database SG: only accepts Postgres (5432) from the Lambda SG.
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for Aurora - Postgres from Lambda only.
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-db-sg"
+
+  DatabaseIngressFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      Description: Postgres from Lambda SG.
+
+  # VPC endpoint SG: accepts HTTPS (443) from the Lambda SG.
+  VpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for interface VPC endpoints - 443 from Lambda only.
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpce-sg"
+
+  VpcEndpointIngressFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref VpcEndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      Description: HTTPS from Lambda SG.
+
+  # ----- VPC endpoints (replace a NAT gateway) ----------------------------
+  # Interface endpoints for the AWS APIs the Lambdas call from inside the VPC.
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+
+  # S3 gateway endpoint: free (unlike an interface endpoint) and used for CSV
+  # ingestion in v2. Attaches a prefix-list route to the private route table.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  # ----- Database ---------------------------------------------------------
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for Aurora.
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-db-subnets"
+
+  # Aurora Serverless v2, PostgreSQL-compatible.
+  # Cost lever (§4): MinCapacity 0 => the cluster auto-pauses when idle and
+  # idle compute drops to ~$0. SecondsUntilAutoPause is the idle timeout.
+  # ManageMasterUserPassword => RDS generates & stores the master password in
+  # Secrets Manager (no secret ever lives in this template or the repo).
+  # DeletionPolicy Delete honors the `sam delete` teardown requirement.
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: !Ref EngineVersion
+      DatabaseName: !Ref DBName
+      MasterUsername: !Ref DBMasterUsername
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DatabaseSecurityGroup
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0
+        MaxCapacity: !Ref MaxCapacity
+        SecondsUntilAutoPause: 300
+      StorageEncrypted: true
+      EnableCloudwatchLogsExports:
+        - postgresql
+
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+
+# ---------------------------------------------------------------------------
+# Outputs (consumed by later build-order items / for verification)
+# ---------------------------------------------------------------------------
+Outputs:
+  VpcId:
+    Description: VPC id.
+    Value: !Ref Vpc
+
+  PrivateSubnetIds:
+    Description: Comma-separated private subnet ids (for Lambda VPC config).
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+
+  LambdaSecurityGroupId:
+    Description: Security group id to attach to in-VPC Lambdas.
+    Value: !Ref LambdaSecurityGroup
+
+  DBClusterEndpoint:
+    Description: Aurora cluster writer endpoint (host for the pg client).
+    Value: !GetAtt AuroraCluster.Endpoint.Address
+
+  DBClusterPort:
+    Description: Aurora cluster port.
+    Value: !GetAtt AuroraCluster.Endpoint.Port
+
+  DBName:
+    Description: Initial database name.
+    Value: !Ref DBName
+
+  DBSecretArn:
+    Description: >
+      Secrets Manager ARN holding the RDS-managed master credentials.
+      Lambdas read the DB user/password from here at runtime.
+    Value: !GetAtt AuroraCluster.MasterUserSecret.SecretArn
