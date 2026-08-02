@@ -1,0 +1,22 @@
+{
+  "name": "budgeting-app-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:app": "esbuild src/handlers/app.ts --bundle --platform=node --target=node20 --outfile=dist/app/app.js --external:pg-native",
+    "build:migrate": "esbuild src/db/migrate.ts --bundle --platform=node --target=node20 --outfile=dist/migrate/migrate.js --external:pg-native",
+    "build": "npm run build:app && npm run build:migrate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "typescript": "^5.5.0",
+    "esbuild": "^0.21.0"
+  }
+}
