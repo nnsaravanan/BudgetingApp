@@ -167,3 +167,20 @@ export async function deleteTransaction(id: string) {
 export async function getSummary(month: string) {
   return json<Summary>(await apiFetch(`/summary?month=${month}`));
 }
+
+// ---------- Budgets ----------
+
+export async function upsertBudget(category_id: string, period: string, amount_cents: number) {
+  return json<{ id: string; category_id: string; period: string; amount_cents: number }>(
+    await apiFetch('/budgets', {
+      method: 'PUT',
+      body: JSON.stringify({ category_id, period, amount_cents }),
+    })
+  );
+}
+
+export async function deleteBudget(categoryId: string, period: string) {
+  return json<{ deleted: boolean }>(
+    await apiFetch(`/budgets/${categoryId}/${period}`, { method: 'DELETE' })
+  );
+}

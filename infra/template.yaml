@@ -595,6 +595,25 @@ Resources:
       AuthorizerId: !Ref CognitoJwtAuthorizer
       Target: !Sub "integrations/${AppFunctionIntegration}"
 
+  # ----- Budgets routes --------------------------------------------------
+  UpsertBudgetRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "PUT /budgets"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  DeleteBudgetRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "DELETE /budgets/{categoryId}/{period}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
   # ----- Frontend (S3 + CloudFront) --------------------------------------
   FrontendBucket:
     Type: AWS::S3::Bucket

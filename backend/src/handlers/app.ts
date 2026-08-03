@@ -19,6 +19,7 @@ import {
   handleDeleteTransaction,
 } from '../routes/transactions';
 import { handleGetSummary } from '../routes/summary';
+import { handleUpsertBudget, handleDeleteBudget } from '../routes/budgets';
 import { errorResponse } from '../utils/response';
 
 export const handler = async (
@@ -60,6 +61,11 @@ export const handler = async (
 
       case 'GET /summary':
         return await handleGetSummary(event);
+
+      case 'PUT /budgets':
+        return await handleUpsertBudget(event);
+      case 'DELETE /budgets/{categoryId}/{period}':
+        return await handleDeleteBudget(event);
 
       default:
         return errorResponse(404, 'NOT_FOUND', 'Route not found');
