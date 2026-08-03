@@ -1,0 +1,39 @@
+flowchart TB
+    User([User / Browser])
+    IaC["CloudFormation / AWS SAM<br/>YAML — provisions everything"]
+
+    subgraph AWS["AWS Cloud"]
+        subgraph Edge["Frontend / Edge"]
+            CF[CloudFront CDN]
+            S3[(S3 — React build)]
+        end
+
+        Cognito[Cognito User Pool<br/>issues + validates JWT]
+
+        subgraph APIL["API Layer"]
+            APIGW[API Gateway<br/>+ Cognito authorizer]
+            AppLambda[App Lambda — Node.js<br/>CRUD + reports]
+        end
+
+        subgraph Data["VPC — private subnets"]
+            DB[(Aurora Serverless v2 · PostgreSQL<br/>min 0 ACU / auto-pause)]
+        end
+
+        Secrets[Secrets Manager]
+        CW[CloudWatch]
+        VPCe[VPC Endpoints<br/>no NAT gateway]
+    end
+
+    User -->|HTTPS| CF
+    CF -->|static assets| S3
+    User -->|1. login| Cognito
+    User -->|2. API call + JWT| APIGW
+    APIGW -->|validate token| Cognito
+    APIGW -->|3. invoke w/ user claims| AppLambda
+    AppLambda -->|4. SQL scoped to userId| DB
+
+
+    AppLambda -.creds.-> Secrets
+    AppLambda -.logs.-> CW
+    AppLambda -.reach AWS APIs.-> VPCe
+    IaC -.provisions all.-> AWS

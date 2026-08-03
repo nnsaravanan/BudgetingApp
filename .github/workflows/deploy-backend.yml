@@ -1,0 +1,56 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'infra/template.yaml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: cd backend && npm ci
+
+      - name: Install esbuild
+        run: npm install -g esbuild
+
+      - name: Build
+        run: cd backend && npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Package Lambda zips to S3
+        run: |
+          cd infra
+          aws cloudformation package \
+            --template-file template.yaml \
+            --s3-bucket ${{ secrets.S3_ARTIFACTS_BUCKET }} \
+            --output-template-file packaged.yaml
+
+      - name: Deploy stack
+        run: |
+          cd infra
+          aws cloudformation deploy \
+            --template-file packaged.yaml \
+            --stack-name budgeting-app \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              CognitoDomainPrefix=${{ secrets.COGNITO_DOMAIN_PREFIX }} \
+              FrontendUrl=${{ secrets.FRONTEND_URL }} \
+            --no-fail-on-empty-changeset
