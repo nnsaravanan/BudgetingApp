@@ -134,7 +134,7 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {summary.by_category.map(c => {
-                const variance = c.budget_cents !== null ? c.actual_cents - c.budget_cents : null;
+                const variance = c.budget_cents !== null ? c.budget_cents - c.actual_cents : null;
                 const isEditingThis = editing?.categoryId === c.category_id;
 
                 return (
