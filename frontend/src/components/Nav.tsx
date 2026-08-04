@@ -1,6 +1,5 @@
 import { logout } from '../auth';
-
-type Page = 'dashboard' | 'accounts' | 'categories' | 'transactions';
+import type { Page } from '../App';
 
 interface Props {
   page: Page;
@@ -13,6 +12,8 @@ const links: { id: Page; label: string }[] = [
   { id: 'accounts',     label: 'Accounts' },
   { id: 'categories',   label: 'Categories' },
   { id: 'transactions', label: 'Transactions' },
+  { id: 'schedules',    label: 'Schedules' },
+  { id: 'imports',      label: 'Import CSV' },
 ];
 
 export default function Nav({ page, onNav, email }: Props) {

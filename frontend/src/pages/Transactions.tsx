@@ -130,19 +130,23 @@ export default function Transactions() {
       {!loading && (
         <table className="table">
           <thead>
-            <tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th className="num">Amount</th><th></th></tr>
+            <tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th className="num">Amount</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {txns.length === 0 && (
-              <tr><td colSpan={6} className="muted">No transactions for {month}.</td></tr>
+              <tr><td colSpan={7} className="muted">No transactions for {month}.</td></tr>
             )}
             {txns.map(t => (
-              <tr key={t.id}>
+              <tr key={t.id} className={t.status === 'expected' ? 'row-expected' : ''}>
                 <td className="muted">{t.txn_date.slice(0, 10)}</td>
                 <td>{t.description ?? <span className="muted">—</span>}</td>
                 <td className="muted">{accountMap[t.account_id] ?? t.account_id.slice(0, 8)}</td>
                 <td>{t.category_id ? categoryMap[t.category_id] ?? '—' : <span className="muted">Uncategorized</span>}</td>
                 <td className={`num ${t.amount_cents >= 0 ? 'income' : 'expense'}`}>{fmt(t.amount_cents)}</td>
+                <td>
+                  {t.status === 'expected'  && <span className="badge badge-expected">Expected</span>}
+                  {t.status === 'confirmed' && <span className="badge badge-confirmed">Confirmed</span>}
+                </td>
                 <td className="actions">
                   <button className="btn-danger-ghost" onClick={() => handleDelete(t.id)}>Delete</button>
                 </td>

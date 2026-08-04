@@ -20,6 +20,14 @@ import {
 } from '../routes/transactions';
 import { handleGetSummary } from '../routes/summary';
 import { handleUpsertBudget, handleDeleteBudget } from '../routes/budgets';
+import {
+  handleListSchedules,
+  handleCreateSchedule,
+  handleUpdateSchedule,
+  handleDeleteSchedule,
+  handleGenerateExpected,
+} from '../routes/schedules';
+import { handlePresign } from '../routes/presign';
 import { errorResponse } from '../utils/response';
 
 export const handler = async (
@@ -66,6 +74,20 @@ export const handler = async (
         return await handleUpsertBudget(event);
       case 'DELETE /budgets/{categoryId}/{period}':
         return await handleDeleteBudget(event);
+
+      case 'GET /schedules':
+        return await handleListSchedules(event);
+      case 'POST /schedules':
+        return await handleCreateSchedule(event);
+      case 'PUT /schedules/{id}':
+        return await handleUpdateSchedule(event);
+      case 'DELETE /schedules/{id}':
+        return await handleDeleteSchedule(event);
+      case 'POST /schedules/generate':
+        return await handleGenerateExpected(event);
+
+      case 'POST /uploads/presign':
+        return await handlePresign(event);
 
       default:
         return errorResponse(404, 'NOT_FOUND', 'Route not found');

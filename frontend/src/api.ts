@@ -52,6 +52,20 @@ export interface Transaction {
   description: string | null;
   txn_date: string;
   source: string;
+  status: 'manual' | 'expected' | 'confirmed';
+  schedule_id: string | null;
+  created_at: string;
+}
+
+export interface Schedule {
+  id: string;
+  account_id: string;
+  category_id: string | null;
+  amount_cents: number;
+  description: string;
+  frequency: 'weekly' | 'monthly' | 'yearly';
+  next_due: string;
+  active: boolean;
   created_at: string;
 }
 
@@ -166,6 +180,50 @@ export async function deleteTransaction(id: string) {
 
 export async function getSummary(month: string) {
   return json<Summary>(await apiFetch(`/summary?month=${month}`));
+}
+
+// ---------- Schedules ----------
+
+export async function listSchedules() {
+  return json<Schedule[]>(await apiFetch('/schedules'));
+}
+
+export async function createSchedule(fields: {
+  account_id: string;
+  category_id: string | null;
+  amount_cents: number;
+  description: string;
+  frequency: string;
+  next_due: string;
+}) {
+  return json<Schedule>(await apiFetch('/schedules', { method: 'POST', body: JSON.stringify(fields) }));
+}
+
+export async function updateSchedule(id: string, fields: Partial<{
+  amount_cents: number;
+  description: string;
+  frequency: string;
+  next_due: string;
+  active: boolean;
+  category_id: string | null;
+}>) {
+  return json<Schedule>(await apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(fields) }));
+}
+
+export async function deleteSchedule(id: string) {
+  return json<{ deleted: boolean }>(await apiFetch(`/schedules/${id}`, { method: 'DELETE' }));
+}
+
+export async function generateExpected() {
+  return json<{ created: number }>(await apiFetch('/schedules/generate', { method: 'POST' }));
+}
+
+// ---------- Uploads ----------
+
+export async function getPresignedUrl(account_id: string) {
+  return json<{ url: string; key: string; expires_in: number }>(
+    await apiFetch('/uploads/presign', { method: 'POST', body: JSON.stringify({ account_id }) })
+  );
 }
 
 // ---------- Budgets ----------

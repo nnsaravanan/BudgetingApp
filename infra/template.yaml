@@ -319,6 +319,15 @@ Resources:
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !GetAtt AuroraCluster.MasterUserSecret.SecretArn
+        - PolicyName: UploadsBucketAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject      # presign (App Lambda signs on behalf of user)
+                  - s3:GetObject      # Ingest Lambda reads uploaded CSV
+                Resource: !Sub "arn:aws:s3:::${AWS::StackName}-uploads-${AWS::AccountId}/uploads/*"
 
   # ----- CloudWatch log groups -------------------------------------------
   # Declared explicitly so CloudFormation owns the retention policy.
@@ -333,6 +342,18 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-migrate"
+      RetentionInDays: 30
+
+  SchedulerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-scheduler"
+      RetentionInDays: 30
+
+  IngestFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-ingest"
       RetentionInDays: 30
 
   ApiAccessLogGroup:
@@ -448,6 +469,7 @@ Resources:
           DB_HOST: !GetAtt AuroraCluster.Endpoint.Address
           DB_PORT: !GetAtt AuroraCluster.Endpoint.Port
           DB_NAME: !Ref DBName
+          UPLOAD_BUCKET: !Sub "${AWS::StackName}-uploads-${AWS::AccountId}"
 
   AppFunctionPermission:
     Type: AWS::Lambda::Permission
@@ -675,6 +697,169 @@ Resources:
           - ErrorCode: 404
             ResponseCode: 200
             ResponsePagePath: /index.html
+
+  # ----- Schedules routes ------------------------------------------------
+  ListSchedulesRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /schedules"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  CreateScheduleRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /schedules"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  UpdateScheduleRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "PUT /schedules/{id}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  DeleteScheduleRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "DELETE /schedules/{id}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  GenerateExpectedRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /schedules/generate"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  # ----- Uploads presign route -------------------------------------------
+  PresignRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /uploads/presign"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+      Target: !Sub "integrations/${AppFunctionIntegration}"
+
+  # ----- CSV Uploads S3 bucket -------------------------------------------
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: IngestFunctionPermission
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-uploads-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteUploadsAfter7Days
+            Status: Enabled
+            Prefix: uploads/
+            ExpirationInDays: 7
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+                  - Name: suffix
+                    Value: .csv
+            Function: !GetAtt IngestFunction.Arn
+
+  # ----- Scheduler Lambda (EventBridge daily cron) -----------------------
+  SchedulerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scheduler"
+      Code: ../backend/dist/scheduler/
+      Handler: scheduler.handler
+      Runtime: nodejs20.x
+      Timeout: 60
+      MemorySize: 256
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetB
+      Environment:
+        Variables:
+          DB_SECRET_ARN: !GetAtt AuroraCluster.MasterUserSecret.SecretArn
+          DB_HOST: !GetAtt AuroraCluster.Endpoint.Address
+          DB_PORT: !GetAtt AuroraCluster.Endpoint.Port
+          DB_NAME: !Ref DBName
+
+  SchedulerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-scheduler-daily"
+      Description: Trigger the scheduler Lambda once per day at 08:00 UTC
+      ScheduleExpression: "cron(0 8 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Id: SchedulerLambdaTarget
+          Arn: !GetAtt SchedulerFunction.Arn
+
+  SchedulerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SchedulerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SchedulerRule.Arn
+
+  # ----- Ingest Lambda (S3-triggered) ------------------------------------
+  IngestFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ingest"
+      Code: ../backend/dist/ingest/
+      Handler: ingest.handler
+      Runtime: nodejs20.x
+      Timeout: 60
+      MemorySize: 256
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetB
+      Environment:
+        Variables:
+          DB_SECRET_ARN: !GetAtt AuroraCluster.MasterUserSecret.SecretArn
+          DB_HOST: !GetAtt AuroraCluster.Endpoint.Address
+          DB_PORT: !GetAtt AuroraCluster.Endpoint.Port
+          DB_NAME: !Ref DBName
+
+  # Hardcoded bucket name in SourceArn breaks the circular dep (bucket refs Lambda, permission refs bucket)
+  IngestFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IngestFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${AWS::StackName}-uploads-${AWS::AccountId}"
+
+  # ----- App Lambda: add UPLOAD_BUCKET env var ---------------------------
 
   # ----- Migration Lambda -------------------------------------------------
   MigrationFunction:

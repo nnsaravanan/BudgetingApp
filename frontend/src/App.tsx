@@ -7,14 +7,15 @@ import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Categories from './pages/Categories';
 import Transactions from './pages/Transactions';
+import Schedules from './pages/Schedules';
+import Imports from './pages/Imports';
 import Nav from './components/Nav';
 
-type Page = 'dashboard' | 'accounts' | 'categories' | 'transactions';
+export type Page = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'schedules' | 'imports';
 
 export default function App() {
   const path = window.location.pathname;
 
-  // Handle OAuth callback at /callback
   if (path === '/callback') return <Callback />;
 
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -45,6 +46,8 @@ export default function App() {
         {page === 'accounts'     && <Accounts />}
         {page === 'categories'   && <Categories />}
         {page === 'transactions' && <Transactions />}
+        {page === 'schedules'    && <Schedules />}
+        {page === 'imports'      && <Imports />}
       </main>
     </>
   );
