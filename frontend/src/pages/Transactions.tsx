@@ -30,6 +30,8 @@ export default function Transactions() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Form state
   const [accountId, setAccountId] = useState('');
@@ -50,6 +52,7 @@ export default function Transactions() {
   }, []);
 
   useEffect(() => {
+    setSelected(new Set());
     setLoading(true);
     listTransactions(month)
       .then(setTxns)
@@ -97,8 +100,36 @@ export default function Transactions() {
     try {
       await deleteTransaction(id);
       setTxns(prev => prev.filter(t => t.id !== id));
+      setSelected(prev => { const next = new Set(prev); next.delete(id); return next; });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Delete failed');
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === txns.length ? new Set() : new Set(txns.map(t => t.id)));
+  }
+
+  async function handleBulkDelete() {
+    if (!confirm(`Delete ${selected.size} transaction(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      await Promise.all([...selected].map(id => deleteTransaction(id)));
+      setTxns(prev => prev.filter(t => !selected.has(t.id)));
+      setSelected(new Set());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Bulk delete failed');
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -127,17 +158,55 @@ export default function Transactions() {
       {error && <p className="error-text">{error}</p>}
       {loading && <p className="muted">Loading…</p>}
 
+      {selected.size > 0 && (
+        <div className="selection-bar">
+          <span>{selected.size} selected</span>
+          <div className="selection-bar-actions">
+            <button className="btn-ghost" onClick={() => setSelected(new Set())}>Clear</button>
+            <button className="btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? 'Deleting…' : `Delete ${selected.size}`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {!loading && (
         <table className="table">
           <thead>
-            <tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th className="num">Amount</th><th>Status</th><th></th></tr>
+            <tr>
+              <th className="col-check">
+                <input
+                  type="checkbox"
+                  className="row-checkbox"
+                  checked={txns.length > 0 && selected.size === txns.length}
+                  ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < txns.length; }}
+                  onChange={toggleSelectAll}
+                />
+              </th>
+              <th>Date</th><th>Description</th><th>Account</th><th>Category</th><th className="num">Amount</th><th>Status</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {txns.length === 0 && (
-              <tr><td colSpan={7} className="muted">No transactions for {month}.</td></tr>
+              <tr><td colSpan={8} className="muted">No transactions for {month}.</td></tr>
             )}
             {txns.map(t => (
-              <tr key={t.id} className={t.status === 'expected' ? 'row-expected' : ''}>
+              <tr
+                key={t.id}
+                className={[
+                  t.status === 'expected' ? 'row-expected' : '',
+                  selected.has(t.id) ? 'row-selected' : '',
+                ].join(' ').trim()}
+                onClick={() => toggleSelect(t.id)}
+              >
+                <td className="col-check" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="row-checkbox"
+                    checked={selected.has(t.id)}
+                    onChange={() => toggleSelect(t.id)}
+                  />
+                </td>
                 <td className="muted">{t.txn_date.slice(0, 10)}</td>
                 <td>{t.description ?? <span className="muted">—</span>}</td>
                 <td className="muted">{accountMap[t.account_id] ?? t.account_id.slice(0, 8)}</td>
@@ -147,7 +216,7 @@ export default function Transactions() {
                   {t.status === 'expected'  && <span className="badge badge-expected">Expected</span>}
                   {t.status === 'confirmed' && <span className="badge badge-confirmed">Confirmed</span>}
                 </td>
-                <td className="actions">
+                <td className="actions" onClick={e => e.stopPropagation()}>
                   <button className="btn-danger-ghost" onClick={() => handleDelete(t.id)}>Delete</button>
                 </td>
               </tr>

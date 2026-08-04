@@ -215,6 +215,53 @@ input:focus, select:focus {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Multi-select ---- */
+.col-check { width: 36px; padding: 0 8px !important; }
+
+.row-checkbox {
+  width: 16px; height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  display: block;
+}
+
+.row-selected td { background: #6366f114 !important; }
+
+.table tr { cursor: pointer; }
+.table tr td.col-check,
+.table tr td.actions { cursor: default; }
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 1rem;
+  font-size: 14px;
+  font-weight: 500;
+}
+.selection-bar-actions { display: flex; gap: 8px; }
+
+.btn-danger {
+  background: var(--expense);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-danger:hover:not(:disabled) { opacity: 0.85; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---- Status badges ---- */
 .badge-active    { background: #14532d44; color: var(--income); }
 .badge-paused    { background: #1e293b;   color: var(--muted);  }
