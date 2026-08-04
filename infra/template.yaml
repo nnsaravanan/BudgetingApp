@@ -771,6 +771,16 @@ Resources:
             Status: Enabled
             Prefix: uploads/
             ExpirationInDays: 7
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+            AllowedOrigins:
+              - !Sub "https://${FrontendDistribution.DomainName}"
+              - "http://localhost:5173"
+            MaxAge: 3000
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: "s3:ObjectCreated:*"

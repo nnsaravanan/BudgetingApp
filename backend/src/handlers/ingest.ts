@@ -26,11 +26,15 @@ export const handler = async (event: S3Event): Promise<void> => {
     const userCheck = await db.query('SELECT id FROM users WHERE id=$1', [userId]);
     if (userCheck.rows.length === 0) { console.error('Ingest: unknown userId', userId); continue; }
 
-    const accCheck = await db.query(
-      'SELECT id FROM accounts WHERE id=$1 AND user_id=$2',
+    const accCheck = await db.query<{ id: string; type: string }>(
+      'SELECT id, type FROM accounts WHERE id=$1 AND user_id=$2',
       [accountId, userId]
     );
     if (accCheck.rows.length === 0) { console.error('Ingest: account not found', accountId); continue; }
+
+    // Credit card CSVs list charges as positive and payments as negative — opposite of our convention.
+    // Flip the sign so charges become expenses (negative) and refunds become income (positive).
+    const isCreditAccount = accCheck.rows[0].type === 'credit';
 
     // Fetch CSV from S3
     let csvText: string;
@@ -48,7 +52,15 @@ export const handler = async (event: S3Event): Promise<void> => {
     let imported = 0, reconciled = 0, skipped = 0;
 
     for (const row of rows) {
-      const { date, description, amount_cents } = row;
+      const { date, description, row_type } = row;
+      let { amount_cents } = row;
+
+      // Skip credit card payment rows — these are card payoffs, not real transactions.
+      if (row_type?.toLowerCase() === 'payment') { skipped++; continue; }
+
+      // Flip sign for credit account CSVs: positive charge → negative (expense),
+      // negative refund → positive (income).
+      if (isCreditAccount) amount_cents = -amount_cents;
 
       // Stable dedup key — same row re-imported always produces same hash
       const external_ref = createHash('sha256')

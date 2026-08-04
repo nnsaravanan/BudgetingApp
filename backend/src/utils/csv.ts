@@ -2,6 +2,7 @@ export interface CsvRow {
   date: string;        // YYYY-MM-DD
   description: string;
   amount_cents: number; // negative = expense, positive = income
+  row_type?: string;   // raw value from a Type/TransactionType column, if present
 }
 
 // Minimal RFC 4180-compatible CSV parser (handles quoted fields).
@@ -58,6 +59,7 @@ const DESC_KEYS   = new Set(['description','merchant','name','memo','narration']
 const AMT_KEYS    = new Set(['amount','transactionamount','amt']);
 const DEBIT_KEYS  = new Set(['debit','withdrawal','debitamount']);
 const CREDIT_KEYS = new Set(['credit','deposit','creditamount']);
+const TYPE_KEYS   = new Set(['type','transactiontype','txntype']);
 
 export function parseCSV(text: string): CsvRow[] {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
@@ -71,6 +73,7 @@ export function parseCSV(text: string): CsvRow[] {
   const amtIdx    = idx(AMT_KEYS);
   const debitIdx  = idx(DEBIT_KEYS);
   const creditIdx = idx(CREDIT_KEYS);
+  const typeIdx   = idx(TYPE_KEYS);
 
   if (dateIdx === -1 || descIdx === -1) {
     console.error('CSV missing required date or description column. Headers:', headers);
@@ -110,7 +113,8 @@ export function parseCSV(text: string): CsvRow[] {
       continue;
     }
 
-    rows.push({ date, description: rawDesc, amount_cents });
+    const row_type = typeIdx !== -1 ? (fields[typeIdx] ?? '').trim() : undefined;
+    rows.push({ date, description: rawDesc, amount_cents, row_type });
   }
 
   return rows;
