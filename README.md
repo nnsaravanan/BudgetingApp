@@ -205,3 +205,6 @@ All log groups have a 30-day retention policy. The billing alarm sends an email 
 - [x] Input validation on every write endpoint (types, ranges, required fields)
 - [x] HTTPS everywhere (CloudFront + API Gateway)
 - [x] S3 frontend bucket private (served only via CloudFront OAC)
+
+## Full Documentation
+https://docs.google.com/document/d/1J0prTgXDvlgX7f0CW1sTJ9-2KtjvCjcRUHt3E-GhDhM/edit?usp=sharing
